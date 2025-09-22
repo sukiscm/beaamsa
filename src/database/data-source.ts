@@ -2,6 +2,7 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 import databaseConfig from '../config/database.config';
 import { SnakeNamingStrategy } from './naming.strategy';
 import { User } from '../modules/users/entities/user.entity';
+import { Ticket } from 'src/modules/tickets/entities/ticket.entity';
 
 export const getDataSourceOptions = (): DataSourceOptions => {
   const cfg = databaseConfig().db;
@@ -13,7 +14,7 @@ export const getDataSourceOptions = (): DataSourceOptions => {
     username: cfg.user,
     password: cfg.pass,
     database: cfg.name,
-    entities: [User], // o [__dirname + '/../**/*.entity.{ts,js}']
+    entities: [User, Ticket], // o [__dirname + '/../**/*.entity.{ts,js}']
     migrations: [__dirname + '/migrations/*.{ts,js}'],
     namingStrategy: new SnakeNamingStrategy(),
     synchronize: true,
