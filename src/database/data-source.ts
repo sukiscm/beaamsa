@@ -3,6 +3,10 @@ import databaseConfig from '../config/database.config';
 import { SnakeNamingStrategy } from './naming.strategy';
 import { User } from '../modules/users/entities/user.entity';
 import { Ticket } from 'src/modules/tickets/entities/ticket.entity';
+import { Item } from 'src/modules/catalog/items/entities/item.entity';
+import { Location } from 'src/modules/catalog/locations/entities/location.entity';
+import { InventoryMovement } from 'src/modules/inventory/movements/entities/movement.entity';
+import { Inventory } from 'src/modules/inventory/stock/entities/inventory.entity';
 
 export const getDataSourceOptions = (): DataSourceOptions => {
   const cfg = databaseConfig().db;
@@ -14,7 +18,7 @@ export const getDataSourceOptions = (): DataSourceOptions => {
     username: cfg.user,
     password: cfg.pass,
     database: cfg.name,
-    entities: [User, Ticket], // o [__dirname + '/../**/*.entity.{ts,js}']
+    entities: [User, Ticket,Item,Location,InventoryMovement,Inventory], // o [__dirname + '/../**/*.entity.{ts,js}']
     migrations: [__dirname + '/migrations/*.{ts,js}'],
     namingStrategy: new SnakeNamingStrategy(),
     synchronize: true,

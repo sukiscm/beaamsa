@@ -8,6 +8,11 @@ import databaseConfig from './config/database.config';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
+import { ItemsModule } from './modules/catalog/items/items.module';
+import { LocationsModule } from './modules/catalog/locations/locations.module';
+import { StockModule } from './modules/inventory/stock/stock.module';
+import { MovementsModule } from './modules/inventory/movements/movements.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 
 @Module({
   imports: [
@@ -16,6 +21,11 @@ import { TicketsModule } from './modules/tickets/tickets.module';
     UsersModule,
     AuthModule,
     TicketsModule,
+    ItemsModule,
+    LocationsModule,
+    StockModule,
+    MovementsModule,
+    InventoryModule,
   ],
 })
 export class AppModule {}
