@@ -1,26 +1,72 @@
-import { Injectable } from '@nestjs/common';
+// src/modules/catalog/items/items.service.ts
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, ILike } from 'typeorm';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
+import { Item } from './entities/item.entity';
 
 @Injectable()
 export class ItemsService {
-  create(createItemDto: CreateItemDto) {
-    return 'This action adds a new item';
+  constructor(
+    @InjectRepository(Item)
+    private readonly itemRepo: Repository<Item>,
+  ) {}
+
+  async create(createItemDto: CreateItemDto) {
+    const item = this.itemRepo.create(createItemDto);
+    return this.itemRepo.save(item);
   }
 
-  findAll() {
-    return `This action returns all items`;
+  async findAll(filters?: { search?: string; categoria?: string; status?: string }) {
+    const where: any = {};
+
+    // Filtro por búsqueda en descripción
+    if (filters?.search) {
+      where.descripcion = ILike(`%${filters.search}%`);
+    }
+
+    // Filtro por categoría
+    if (filters?.categoria) {
+      where.categoria = filters.categoria;
+    }
+
+    // Filtro por status
+    if (filters?.status) {
+      where.status = filters.status;
+    }
+
+    return this.itemRepo.find({
+      where,
+      order: { descripcion: 'ASC' },
+    });
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} item`;
+  async findOne(id: string) {
+    const item = await this.itemRepo.findOne({ where: { id } });
+    if (!item) {
+      throw new NotFoundException(`Item con ID ${id} no encontrado`);
+    }
+    return item;
   }
 
-  update(id: number, updateItemDto: UpdateItemDto) {
-    return `This action updates a #${id} item`;
+  async update(id: string, updateItemDto: UpdateItemDto) {
+    const item = await this.findOne(id);
+    Object.assign(item, updateItemDto);
+    return this.itemRepo.save(item);
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} item`;
+  async remove(id: string) {
+    const item = await this.findOne(id);
+    return this.itemRepo.remove(item);
+  }
+
+  // Método útil para buscar por descripción (para autocomplete)
+  async search(query: string, limit = 10) {
+    return this.itemRepo.find({
+      where: { descripcion: ILike(`%${query}%`), activo: true },
+      take: limit,
+      order: { descripcion: 'ASC' },
+    });
   }
 }
