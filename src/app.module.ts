@@ -13,6 +13,7 @@ import { LocationsModule } from './modules/catalog/locations/locations.module';
 import { StockModule } from './modules/inventory/stock/stock.module';
 import { MovementsModule } from './modules/inventory/movements/movements.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { MaterialRequestsModule } from './modules/material-requests/material-requests.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { InventoryModule } from './modules/inventory/inventory.module';
     StockModule,
     MovementsModule,
     InventoryModule,
+    MaterialRequestsModule,
   ],
 })
 export class AppModule {}
