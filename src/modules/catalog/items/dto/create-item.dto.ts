@@ -34,4 +34,9 @@ export class CreateItemDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  // 👇 NUEVO CAMPO
+  @IsOptional()
+  @IsString()
+  observaciones?: string;
 }

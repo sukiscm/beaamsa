@@ -1,4 +1,3 @@
-
 // src/modules/catalog/items/entities/item.entity.ts
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
@@ -27,6 +26,10 @@ export class Item {
 
   @Column({ default: true })
   activo: boolean;
+
+  // 👇 NUEVO CAMPO
+  @Column({ type: 'text', nullable: true })
+  observaciones?: string;
 
   @CreateDateColumn() 
   createdAt: Date;

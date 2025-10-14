@@ -8,6 +8,7 @@ import {
   ValidateNested,
   IsNumber,
   IsPositive,
+  IsBoolean,
 } from 'class-validator';
 
 export class MaterialRequestItemDto {
@@ -25,7 +26,7 @@ export class MaterialRequestItemDto {
 }
 
 export class CreateMaterialRequestDto {
-  @IsUUID()
+@IsUUID()
   ticketId: string;
 
   @IsArray()
@@ -36,6 +37,15 @@ export class CreateMaterialRequestDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  // 👇 NUEVO: Campos de tracking de preset
+  @IsOptional()
+  @IsUUID()
+  fromPresetId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  wasModifiedFromPreset?: boolean;
 }
 
 export class ApproveMaterialRequestDto {

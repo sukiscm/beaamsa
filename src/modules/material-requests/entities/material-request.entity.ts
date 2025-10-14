@@ -11,14 +11,15 @@ import {
 import { Ticket } from '../../tickets/entities/ticket.entity';
 import { User } from '../../users/entities/user.entity';
 import { MaterialRequestItem } from './material-request-item.entity';
+import { MaterialRequestPreset } from './material-request-preset.entity'; // 👈 NUEVO
 
 export enum MaterialRequestStatus {
-  PENDING = 'PENDING',           // Creada, esperando aprobación
-  APPROVED = 'APPROVED',         // Aprobada por almacenista
-  REJECTED = 'REJECTED',         // Rechazada
-  DELIVERED = 'DELIVERED',       // Materiales entregados
-  PARTIAL = 'PARTIAL',           // Entrega parcial
-  CANCELLED = 'CANCELLED',       // Cancelada por técnico
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  DELIVERED = 'DELIVERED',
+  PARTIAL = 'PARTIAL',
+  CANCELLED = 'CANCELLED',
 }
 
 @Entity('material_requests')
@@ -26,27 +27,34 @@ export class MaterialRequest {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // Relación con ticket
   @ManyToOne(() => Ticket, { eager: true })
   ticket: Ticket;
 
-  // Folio/número de requisición
   @Column({ unique: true })
   folio: string;
 
-  // Estado
   @Column({ type: 'enum', enum: MaterialRequestStatus, default: MaterialRequestStatus.PENDING })
   status: MaterialRequestStatus;
 
-  // Usuarios involucrados
+  // Usuarios
   @ManyToOne(() => User, { eager: true })
-  requestedBy: User; // Técnico que solicita
+  requestedBy: User;
 
   @ManyToOne(() => User, { nullable: true, eager: true })
-  approvedBy?: User; // Almacenista que aprueba
+  approvedBy?: User;
 
   @ManyToOne(() => User, { nullable: true, eager: true })
-  deliveredBy?: User; // Quien entrega físicamente
+  deliveredBy?: User;
+
+  // 👇 NUEVO: Relación con preset usado
+  @ManyToOne(() => MaterialRequestPreset, { nullable: true, eager: true })
+  fromPreset?: MaterialRequestPreset;
+
+  @Column({ nullable: true })
+  fromPresetId?: string;
+
+  @Column({ default: false })
+  wasModifiedFromPreset: boolean; // 👈 Indica si se modificó el preset original
 
   // Observaciones
   @Column({ type: 'text', nullable: true })
@@ -55,7 +63,7 @@ export class MaterialRequest {
   @Column({ type: 'text', nullable: true })
   rejectionReason?: string;
 
-  // Items solicitados (relación)
+  // Items
   @OneToMany(() => MaterialRequestItem, (item) => item.materialRequest, { cascade: true })
   items: MaterialRequestItem[];
 

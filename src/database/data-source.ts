@@ -9,6 +9,7 @@ import { InventoryMovement } from 'src/modules/inventory/movements/entities/move
 import { Inventory } from 'src/modules/inventory/stock/entities/inventory.entity';
 import { MaterialRequest } from 'src/modules/material-requests/entities/material-request.entity';
 import { MaterialRequestItem } from 'src/modules/material-requests/entities/material-request-item.entity';
+import { MaterialRequestPreset } from 'src/modules/material-requests/entities/material-request-preset.entity';
 
 
 export const getDataSourceOptions = (): DataSourceOptions => {
@@ -21,7 +22,7 @@ export const getDataSourceOptions = (): DataSourceOptions => {
     username: cfg.user,
     password: cfg.pass,
     database: cfg.name,
-    entities: [User, Ticket,Item,Location,InventoryMovement,Inventory,MaterialRequest,MaterialRequestItem], // o [__dirname + '/../**/*.entity.{ts,js}']
+    entities: [User, Ticket,Item,Location,InventoryMovement,Inventory,MaterialRequest,MaterialRequestItem,MaterialRequestPreset,], // o [__dirname + '/../**/*.entity.{ts,js}']
     migrations: [__dirname + '/migrations/*.{ts,js}'],
     namingStrategy: new SnakeNamingStrategy(),
     synchronize: true,
