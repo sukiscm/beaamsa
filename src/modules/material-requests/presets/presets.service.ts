@@ -1,214 +1,43 @@
-// src/modules/material-requests/presets.service.ts
+// src/modules/material-requests/presets/presets.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
-import { Item } from 'src/modules/catalog/items/entities/item.entity';
-import { MaterialRequest } from '../entities/material-request.entity';
+import { Repository, DataSource, Not } from 'typeorm';
 import { MaterialRequestPreset, PresetType } from '../entities/material-request-preset.entity';
+import { MaterialRequest } from '../entities/material-request.entity';
+import { MaterialRequestItem } from '../entities/material-request-item.entity';
+import { Item } from '../../catalog/items/entities/item.entity';
 
 @Injectable()
 export class PresetsService {
-constructor(
+  constructor(
     @InjectRepository(MaterialRequestPreset)
     private presetRepo: Repository<MaterialRequestPreset>,
-    @InjectRepository(MaterialRequest) // 👈 NUEVO
+    @InjectRepository(MaterialRequest)
     private materialRequestRepo: Repository<MaterialRequest>,
+    @InjectRepository(MaterialRequestItem)
+    private materialRequestItemRepo: Repository<MaterialRequestItem>,
     @InjectRepository(Item)
     private itemRepo: Repository<Item>,
-    private dataSource: DataSource, // 👈 NUEVO
+    private dataSource: DataSource,
   ) {}
 
-async findAll() {
-  try {
-    console.log('🔍 PresetsService.findAll() - Iniciando...');
-    
-    console.log('📊 Repositorio presetRepo:', !!this.presetRepo);
-    
-    const presets = await this.presetRepo.find({
-      where: { active: true },
+  async findAll(includeInactive = false) {
+    const whereCondition = includeInactive 
+      ? {} 
+      : { active: true };
+
+    return this.presetRepo.find({
+      where: whereCondition,
       order: { name: 'ASC' },
     });
-    
-    console.log('✅ Presets encontrados:', presets.length);
-    
-    return presets;
-  } catch (error) {
-    console.error('❌ Error en findAll():', error);
-    throw error;
   }
-}
 
   async findOne(id: string) {
     const preset = await this.presetRepo.findOne({ where: { id } });
-    if (!preset) throw new NotFoundException('Preset no encontrado');
+    if (!preset) throw new NotFoundException('Preset not found');
     return preset;
   }
 
-  async findByType(type: PresetType) {
-    return this.presetRepo.findOne({ where: { type, active: true } });
-  }
-
-  // Obtener preset con items completos (no solo IDs)
-  async getPresetWithItems(id: string) {
-    const preset = await this.findOne(id);
-    
-    // Cargar información completa de cada item
-    const itemsWithDetails = await Promise.all(
-      preset.items.map(async (presetItem) => {
-        const item = await this.itemRepo.findOne({ 
-          where: { id: presetItem.itemId } 
-        });
-        
-        return {
-          item: item || null,
-          quantity: presetItem.quantity,
-          notes: presetItem.notes,
-        };
-      })
-    );
-
-    // Filtrar items que ya no existen
-    const validItems = itemsWithDetails.filter(i => i.item !== null);
-
-    return {
-      ...preset,
-      itemsWithDetails: validItems,
-    };
-  }
-
-  // Crear preset personalizado (admin)
-  async create(data: {
-    name: string;
-    type: PresetType;
-    description?: string;
-    items: Array<{ itemId: string; quantity: number; notes?: string }>;
-  }) {
-    const preset = this.presetRepo.create(data);
-    return this.presetRepo.save(preset);
-  }
-
-  // Actualizar preset
-  async update(id: string, data: Partial<MaterialRequestPreset>) {
-    const preset = await this.findOne(id);
-    Object.assign(preset, data);
-    return this.presetRepo.save(preset);
-  }
-
-  // Desactivar preset
-  async deactivate(id: string) {
-    const preset = await this.findOne(id);
-    preset.active = false;
-    return this.presetRepo.save(preset);
-  }
-  
-  async getPresetsStats() {
-    // 1. Top presets más usados
-      const topPresets = await this.dataSource
-      .getRepository(MaterialRequest)
-      .createQueryBuilder('mr')
-      .select('mr.fromPresetId', 'presetId')
-      .addSelect('COUNT(*)', 'usageCount')
-      .addSelect('SUM(CASE WHEN mr.wasModifiedFromPreset THEN 1 ELSE 0 END)', 'modifiedCount')
-      .addSelect('SUM(CASE WHEN mr.status = :approved THEN 1 ELSE 0 END)', 'approvedCount')
-      .setParameter('approved', 'APPROVED')
-      .where('mr.fromPresetId IS NOT NULL')
-      .groupBy('mr.fromPresetId')
-      .orderBy('usageCount', 'DESC')
-      .getRawMany();
-
-    // 2. Cargar información completa de cada preset
-    const presetsWithStats = await Promise.all(
-      topPresets.map(async (stat) => {
-        const preset = await this.presetRepo.findOne({
-          where: { id: stat.presetId },
-        });
-
-        return {
-          preset,
-          stats: {
-            totalUsage: parseInt(stat.usageCount, 10),
-            modifiedUsage: parseInt(stat.modifiedCount, 10),
-            approvedUsage: parseInt(stat.approvedCount, 10),
-            modificationRate: (parseInt(stat.modifiedCount, 10) / parseInt(stat.usageCount, 10)) * 100,
-            approvalRate: (parseInt(stat.approvedCount, 10) / parseInt(stat.usageCount, 10)) * 100,
-          },
-        };
-      })
-    );
-
-    // 3. Estadísticas globales
-    const totalRequests = await this.materialRequestRepo.count();
-
-
-    // Corregir la query anterior:
-    const requestsWithPreset = await this.materialRequestRepo
-      .createQueryBuilder('mr')
-      .where('mr.fromPresetId IS NOT NULL')
-      .getCount();
-
-    const globalStats = {
-      totalRequests,
-      requestsFromPreset: requestsWithPreset,
-      requestsManual: totalRequests - requestsWithPreset,
-      presetUsageRate: (requestsWithPreset / totalRequests) * 100,
-    };
-
-    return {
-      presetsWithStats,
-      globalStats,
-    };
-  }
-
-  // 👇 NUEVO: Estadísticas por periodo
- async getPresetStatsByPeriod(startDate: Date, endDate: Date) {
-    const stats = await this.dataSource
-      .getRepository(MaterialRequest)
-      .createQueryBuilder('mr')
-      .select('mr.fromPresetId', 'presetId')
-      .addSelect('COUNT(*)', 'usageCount')
-      .addSelect('DATE(mr.createdAt)', 'date')
-      .where('mr.fromPresetId IS NOT NULL')
-      .andWhere('mr.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
-      .groupBy('mr.fromPresetId')
-      .addGroupBy('DATE(mr.createdAt)')
-      .orderBy('date', 'ASC')
-      .getRawMany();
-
-    return stats;
-  }
-
-  // 👇 NUEVO: Items más solicitados desde presets
-  async getMostRequestedItemsFromPresets(limit = 10) {
-    const items = await this.dataSource
-      .createQueryBuilder()
-      .select('mri.item_id', 'itemId')
-      .addSelect('COUNT(*)', 'requestCount')
-      .addSelect('SUM(CAST(mri.quantity_requested AS INTEGER))', 'totalQuantity')
-      .from('material_request_items', 'mri')
-      .innerJoin('material_requests', 'mr', 'mr.id = mri.material_request_id')
-      .where('mr.from_preset_id IS NOT NULL')
-      .groupBy('mri.item_id')
-      .orderBy('requestCount', 'DESC')
-      .limit(limit)
-      .getRawMany();
-
-    // Cargar información de items
-    const itemsWithDetails = await Promise.all(
-      items.map(async (stat) => {
-        const item = await this.itemRepo.findOne({
-          where: { id: stat.itemId },
-        });
-
-        return {
-          item,
-          requestCount: parseInt(stat.requestCount, 10),
-          totalQuantity: parseInt(stat.totalQuantity, 10),
-        };
-      })
-    );
-
-    return itemsWithDetails;
-  }
   async getPresetWithDetails(id: string) {
     const preset = await this.presetRepo.findOne({ where: { id } });
     
@@ -216,7 +45,6 @@ async findAll() {
       throw new NotFoundException('Preset not found');
     }
 
-    // Cargar información completa de cada item
     const itemsWithDetails = await Promise.all(
       preset.items.map(async (presetItem) => {
         const item = await this.itemRepo.findOne({
@@ -235,4 +63,191 @@ async findAll() {
       itemsWithDetails,
     };
   }
+
+  async findByType(type: PresetType) {
+    return this.presetRepo.find({
+      where: { type, active: true },
+      order: { name: 'ASC' },
+    });
+  }
+
+  async create(data: any) {
+    const preset = this.presetRepo.create(data);
+    return this.presetRepo.save(preset);
+  }
+
+  async update(id: string, data: any) {
+    try {
+      console.log('📝 Service: Actualizando preset', id);
+      
+      const preset = await this.findOne(id);
+      
+      await this.presetRepo.update(id, {
+        name: data.name,
+        type: data.type,
+        description: data.description,
+        items: data.items,
+        active: data.active,
+      });
+      
+      console.log('✅ Service: Preset actualizado');
+      
+      return this.findOne(id);
+    } catch (error) {
+      console.error('❌ Service: Error al actualizar preset', error);
+      throw error;
+    }
+  }
+
+  async remove(id: string) {
+    try {
+      console.log('🗑️ Service: Eliminando preset', id);
+      
+      await this.findOne(id);
+      
+      await this.presetRepo.delete(id);
+      
+      console.log('✅ Service: Preset eliminado');
+      
+      return { message: 'Preset eliminado exitosamente' };
+    } catch (error) {
+      console.error('❌ Service: Error al eliminar preset', error);
+      throw error;
+    }
+  }
+
+// 👇 FIX: Estadísticas de uso
+async getPresetsStats() {
+  try {
+    // Obtener estadísticas por preset
+    const presetStats = await this.dataSource
+      .createQueryBuilder(MaterialRequest, 'mr')
+      .select('mr.from_preset_id', 'presetId') // 👈 snake_case
+      .addSelect('COUNT(*)', 'usageCount')
+      .addSelect(
+        'SUM(CASE WHEN mr.was_modified_from_preset THEN 1 ELSE 0 END)', // 👈 snake_case
+        'modifiedCount'
+      )
+      .addSelect(
+        "SUM(CASE WHEN mr.status = 'APPROVED' THEN 1 ELSE 0 END)",
+        'approvedCount'
+      )
+      .where('mr.from_preset_id IS NOT NULL') // 👈 snake_case
+      .groupBy('mr.from_preset_id') // 👈 snake_case
+      .orderBy('"usageCount"', 'DESC')
+      .getRawMany();
+
+    // Cargar información completa de cada preset
+    const presetsWithStats = await Promise.all(
+      presetStats.map(async (stat) => {
+        const preset = await this.presetRepo.findOne({
+          where: { id: stat.presetId },
+        });
+
+        const totalUsage = parseInt(stat.usageCount, 10);
+        const modifiedUsage = parseInt(stat.modifiedCount, 10);
+        const approvedUsage = parseInt(stat.approvedCount, 10);
+
+        return {
+          preset: preset || null,
+          stats: {
+            totalUsage,
+            modifiedUsage,
+            approvedUsage,
+            modificationRate: totalUsage > 0 ? (modifiedUsage / totalUsage) * 100 : 0,
+            approvalRate: totalUsage > 0 ? (approvedUsage / totalUsage) * 100 : 0,
+          },
+        };
+      })
+    );
+
+    // Estadísticas globales
+    const totalRequests = await this.materialRequestRepo.count();
+    
+    const requestsFromPreset = await this.materialRequestRepo
+      .createQueryBuilder('mr')
+      .where('mr.from_preset_id IS NOT NULL') // 👈 snake_case
+      .getCount();
+    
+    const requestsManual = totalRequests - requestsFromPreset;
+
+    const globalStats = {
+      totalRequests,
+      requestsFromPreset,
+      requestsManual,
+      presetUsageRate:
+        totalRequests > 0 ? (requestsFromPreset / totalRequests) * 100 : 0,
+    };
+
+    return {
+      presetsWithStats,
+      globalStats,
+    };
+  } catch (error) {
+    console.error('❌ Error en getPresetsStats:', error);
+    throw error;
+  }
+}
+
+// 👇 FIX: Items más solicitados
+async getMostRequestedItemsFromPresets(limit = 10) {
+  try {
+    const topItems = await this.dataSource
+      .createQueryBuilder(MaterialRequestItem, 'mri')
+      .select('mri.item_id', 'itemId') // 👈 CAMBIAR a snake_case
+      .addSelect('COUNT(*)', 'requestCount')
+      .addSelect('SUM(CAST(mri.quantity_requested AS INTEGER))', 'totalQuantity') // 👈 snake_case
+      .innerJoin('mri.materialRequest', 'mr')
+      .where('mr.from_preset_id IS NOT NULL') // 👈 snake_case
+      .groupBy('mri.item_id') // 👈 CAMBIAR a snake_case
+      .orderBy('"requestCount"', 'DESC')
+      .limit(limit)
+      .getRawMany();
+
+    // Cargar información completa de cada item
+    const topItemsWithDetails = await Promise.all(
+      topItems.map(async (topItem) => {
+        const item = await this.itemRepo.findOne({
+          where: { id: topItem.itemId },
+        });
+
+        return {
+          item: item || null,
+          requestCount: parseInt(topItem.requestCount, 10),
+          totalQuantity: parseInt(topItem.totalQuantity, 10),
+        };
+      })
+    );
+
+    return topItemsWithDetails;
+  } catch (error) {
+    console.error('❌ Error en getMostRequestedItemsFromPresets:', error);
+    throw error;
+  }
+}
+
+// 👇 FIX: Estadísticas por periodo
+async getPresetStatsByPeriod(startDate: Date, endDate: Date) {
+  try {
+    const presetStats = await this.dataSource
+      .createQueryBuilder(MaterialRequest, 'mr')
+      .select('mr.from_preset_id', 'presetId') // 👈 snake_case
+      .addSelect('COUNT(*)', 'usageCount')
+      .addSelect('DATE(mr.created_at)', 'date') // 👈 snake_case
+      .where('mr.from_preset_id IS NOT NULL') // 👈 snake_case
+      .andWhere('mr.created_at BETWEEN :startDate AND :endDate', { // 👈 snake_case
+        startDate,
+        endDate,
+      })
+      .groupBy('mr.from_preset_id') // 👈 snake_case
+      .addGroupBy('DATE(mr.created_at)') // 👈 snake_case
+      .orderBy('DATE(mr.created_at)', 'ASC') // 👈 snake_case
+      .getRawMany();
+
+    return presetStats;
+  } catch (error) {
+    console.error('❌ Error en getPresetStatsByPeriod:', error);
+    throw error;
+  }
+}
 }

@@ -1,5 +1,5 @@
 // src/modules/material-requests/presets/presets.controller.ts
-import { Controller, Get, Post, Body, Param, Patch, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Patch, UseGuards, Query, Delete } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { PresetsService } from './presets.service';
 
@@ -8,11 +8,11 @@ import { PresetsService } from './presets.service';
 export class PresetsController {
   constructor(private readonly presetsService: PresetsService) {}
 
-  @Get()  // 👈 GET /api/material-requests/presets
-  async findAll() {
-    console.log('📥 GET /material-requests/presets');
-    return this.presetsService.findAll();
-  }
+ @Get()
+findAll(@Query('includeInactive') includeInactive?: string) {
+  const include = includeInactive === 'true';
+  return this.presetsService.findAll(include);
+}
 
   @Get('stats/usage')  // 👈 IMPORTANTE: Antes de :id
   async getStats() {
@@ -48,7 +48,16 @@ export class PresetsController {
   }
 
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() data: any) {
+  update(@Param('id') id: string, @Body() data: any) {
+    console.log('📝 PATCH /presets/:id recibido');
+    console.log('ID:', id);
+    console.log('Data:', data);
     return this.presetsService.update(id, data);
+  }
+   @Delete(':id')
+  remove(@Param('id') id: string) {
+    console.log('🗑️ DELETE /presets/:id recibido');
+    console.log('ID:', id);
+    return this.presetsService.remove(id);
   }
 }
