@@ -24,74 +24,103 @@ export class MaterialRequestsService {
     private dataSource: DataSource,
   ) {}
 
-  // Generar folio único (MR-YYYYMMDD-XXX)
-private async generateFolio(): Promise<string> {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const prefix = `MR-${date}`;
-  
-  // Buscar el último folio del día
-  const lastRequest = await this.reqRepo
-    .createQueryBuilder('mr')
-    .where('mr.folio LIKE :prefix', { prefix: `${prefix}-%` })
-    .orderBy('mr.folio', 'DESC')
-    .getOne();
+  private async generateFolio(): Promise<string> {
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const prefix = `MR-${date}`;
+    
+    const lastRequest = await this.reqRepo
+      .createQueryBuilder('mr')
+      .where('mr.folio LIKE :prefix', { prefix: `${prefix}-%` })
+      .orderBy('mr.folio', 'DESC')
+      .getOne();
 
-  let nextNumber = 1;
-  if (lastRequest) {
-    const lastNumber = parseInt(lastRequest.folio.split('-').pop() || '0', 10);
-    nextNumber = lastNumber + 1;
+    let nextNumber = 1;
+    if (lastRequest) {
+      const lastNumber = parseInt(lastRequest.folio.split('-').pop() || '0', 10);
+      nextNumber = lastNumber + 1;
+    }
+
+    return `${prefix}-${String(nextNumber).padStart(3, '0')}`;
   }
 
-  return `${prefix}-${String(nextNumber).padStart(3, '0')}`;
-}
-
-  // 1. Crear solicitud (técnico)
   async create(dto: CreateMaterialRequestDto, userId: string) {
-  return this.dataSource.transaction(async (manager) => {
-    const reqRepo = manager.getRepository(MaterialRequest);
-    const itemRepo = manager.getRepository(MaterialRequestItem);
+    return this.dataSource.transaction(async (manager) => {
+      const reqRepo = manager.getRepository(MaterialRequest);
+      const itemRepo = manager.getRepository(MaterialRequestItem);
 
-    const folio = await this.generateFolio();
+      const folio = await this.generateFolio();
 
-    const materialRequest = reqRepo.create({
-      folio,
-      ticket: { id: dto.ticketId } as any,
-      requestedBy: { id: userId } as any,
-      notes: dto.notes,
-      status: MaterialRequestStatus.PENDING,
+      const materialRequest = reqRepo.create({
+        folio,
+        ticket: { id: dto.ticketId } as any,
+        requestedBy: { id: userId } as any,
+        notes: dto.notes,
+        status: MaterialRequestStatus.PENDING,
+        fromPresetId: dto.fromPresetId,
+        wasModifiedFromPreset: dto.wasModifiedFromPreset || false,
+      });
+
+      const savedRequest = await reqRepo.save(materialRequest);
+
+      const items = dto.items.map((i) =>
+        itemRepo.create({
+          materialRequest: savedRequest,
+          item: { id: i.itemId } as any,
+          quantityRequested: i.quantityRequested.toString(),
+          notes: i.notes,
+        }),
+      );
+
+      await itemRepo.save(items);
+
+      return reqRepo.findOne({
+        where: { id: savedRequest.id },
+        relations: ['items', 'items.item', 'ticket', 'requestedBy'],
+      });
     });
+  }
 
-    const savedRequest = await reqRepo.save(materialRequest);
-
-    // Crear items
-    const items = dto.items.map((i) =>
-      itemRepo.create({
-        materialRequest: savedRequest,
-        item: { id: i.itemId } as any,
-        quantityRequested: i.quantityRequested.toString(),
-        notes: i.notes,
-      }),
-    );
-
-    await itemRepo.save(items);
-
-    // 🔥 IMPORTANTE: Buscar después de que la transacción termine
-    // Usar el manager de la transacción en lugar de this.findOne
-    return reqRepo.findOne({
-      where: { id: savedRequest.id },
-      relations: ['items', 'items.item', 'ticket', 'requestedBy'],
-    });
-  });
-}
-
-  // 2. Aprobar solicitud (almacenista) → genera salida automática
   async approve(id: string, dto: ApproveMaterialRequestDto, userId: string, locationId: string) {
+    console.log('\n🔍 ===== INICIANDO APROBACIÓN =====');
+    console.log('Request ID:', id);
+    console.log('Location ID:', locationId);
+    console.log('Items a aprobar:', dto.items);
+
     return this.dataSource.transaction(async (manager) => {
       const req = await this.findOne(id);
 
       if (req.status !== MaterialRequestStatus.PENDING) {
-        throw new BadRequestException('Only pending requests can be approved');
+        throw new BadRequestException('Solo se pueden aprobar solicitudes pendientes');
       }
+
+      // 🔥 NUEVA VALIDACIÓN: Verificar stock disponible ANTES de aprobar
+      console.log('\n📊 Verificando stock disponible...');
+      
+      const stockErrors: string[] = [];
+      
+      for (const itemDto of dto.items) {
+        const availableStock = await this.stockService.checkStock(itemDto.itemId, locationId);
+        
+        console.log(`Item ${itemDto.itemId}: Disponible=${availableStock}, Solicitado=${itemDto.quantityApproved}`);
+        
+        if (availableStock < itemDto.quantityApproved) {
+          const reqItem = req.items.find((i) => i.item.id === itemDto.itemId);
+          const itemName = reqItem?.item?.descripcion || itemDto.itemId;
+          
+          stockErrors.push(
+            `${itemName}: Stock insuficiente (Disponible: ${availableStock}, Solicitado: ${itemDto.quantityApproved})`
+          );
+        }
+      }
+
+      if (stockErrors.length > 0) {
+        console.error('❌ Errores de stock:', stockErrors);
+        throw new BadRequestException(
+          `No hay stock suficiente:\n${stockErrors.join('\n')}`
+        );
+      }
+
+      console.log('✅ Stock verificado, procediendo con la aprobación...');
 
       // Actualizar cantidades aprobadas
       for (const itemDto of dto.items) {
@@ -111,32 +140,48 @@ private async generateFolio(): Promise<string> {
       req.deliveredAt = new Date();
       await manager.save(req);
 
-      // 🔥 Generar movimientos OUT automáticamente
-      for (const item of req.items) {
-        const quantityApproved = Number(item.quantityApproved);
-        if (quantityApproved <= 0) continue;
+      console.log('\n📦 Generando movimientos OUT...');
 
-        await this.stockService.move({
-          itemId: item.item.id,
-          locationId,
-          tipo: MovementType.OUT,
-          cantidad: quantityApproved,
-          userId,
-          ref: { tipo: 'MATERIAL_REQUEST', id: req.id },
-          comentario: `Material Request ${req.folio} - Ticket ${req.ticket.id}`,
-        });
+      // Generar movimientos OUT automáticamente
+      for (const item of req.items) {
+        const quantityApproved = parseFloat(item.quantityApproved || '0');
+        
+        if (quantityApproved <= 0) {
+          console.log(`⏭️ Saltando item ${item.item.id} (cantidad = 0)`);
+          continue;
+        }
+
+        console.log(`➡️ Procesando salida: Item=${item.item.id}, Cantidad=${quantityApproved}`);
+
+        try {
+          await this.stockService.move({
+            itemId: item.item.id,
+            locationId,
+            tipo: MovementType.OUT,
+            cantidad: quantityApproved,
+            userId,
+            ref: { tipo: 'MATERIAL_REQUEST', id: req.id },
+            comentario: `Material Request ${req.folio} - Ticket ${req.ticket.id}`,
+          });
+          
+          console.log(`✅ Movimiento OUT exitoso para item ${item.item.id}`);
+        } catch (error) {
+          console.error(`❌ Error en movimiento OUT para item ${item.item.id}:`, error);
+          throw error; // Propagar error para rollback
+        }
       }
+
+      console.log('\n✅ ===== APROBACIÓN COMPLETADA =====\n');
 
       return this.findOne(id);
     });
   }
 
-  // 3. Rechazar solicitud
   async reject(id: string, dto: RejectMaterialRequestDto, userId: string) {
     const req = await this.findOne(id);
 
     if (req.status !== MaterialRequestStatus.PENDING) {
-      throw new BadRequestException('Only pending requests can be rejected');
+      throw new BadRequestException('Solo se pueden rechazar solicitudes pendientes');
     }
 
     req.status = MaterialRequestStatus.REJECTED;
@@ -147,12 +192,10 @@ private async generateFolio(): Promise<string> {
     return this.reqRepo.save(req);
   }
 
-  // 4. Procesar devoluciones (al cerrar ticket)
   async processReturn(dto: ReturnMaterialsDto, userId: string, locationId: string) {
     return this.dataSource.transaction(async (manager) => {
       const req = await this.findOne(dto.materialRequestId);
 
-      // Registrar devoluciones en items
       for (const returnItem of dto.items) {
         const reqItem = req.items.find((i) => i.item.id === returnItem.itemId);
         if (!reqItem) continue;
@@ -160,7 +203,6 @@ private async generateFolio(): Promise<string> {
         reqItem.quantityReturned = returnItem.quantityReturned.toString();
         await manager.save(reqItem);
 
-        // Generar movimiento IN
         if (returnItem.quantityReturned > 0) {
           await this.stockService.move({
             itemId: returnItem.itemId,
@@ -169,7 +211,7 @@ private async generateFolio(): Promise<string> {
             cantidad: returnItem.quantityReturned,
             userId,
             ref: { tipo: 'RETURN', id: req.id },
-            comentario: `Return from ${req.folio}`,
+            comentario: `Devolución de ${req.folio}`,
           });
         }
       }
@@ -178,7 +220,6 @@ private async generateFolio(): Promise<string> {
     });
   }
 
-  // Consultas
   async findAll(filters?: { ticketId?: string; status?: string; userId?: string }) {
     const where: any = {};
     if (filters?.ticketId) where.ticket = { id: filters.ticketId };
@@ -198,7 +239,7 @@ private async generateFolio(): Promise<string> {
       relations: ['items', 'items.item', 'ticket', 'requestedBy', 'approvedBy'],
     });
 
-    if (!req) throw new NotFoundException('Material request not found');
+    if (!req) throw new NotFoundException('Solicitud de material no encontrada');
     return req;
   }
 
@@ -206,7 +247,7 @@ private async generateFolio(): Promise<string> {
     const req = await this.findOne(id);
 
     if (req.status !== MaterialRequestStatus.PENDING) {
-      throw new BadRequestException('Only pending requests can be cancelled');
+      throw new BadRequestException('Solo se pueden cancelar solicitudes pendientes');
     }
 
     req.status = MaterialRequestStatus.CANCELLED;
