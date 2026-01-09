@@ -4,6 +4,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { StockService } from './stock.service';
 import { MovementType } from '../movements/entities/movement.entity';
 import { AdjustDto, InDto, OutDto } from './dto/move.dto';
+import { TransferStockDto } from './dto/transfer.dto';
 
 @UseGuards(AuthGuard('jwt-access'))
 @Controller('inventory')
@@ -28,5 +29,17 @@ export class StockController {
   @Post('adjust')
   adjust(@Body() dto: AdjustDto, @Req() req: any) {
     return this.stock.move({ ...dto, tipo: MovementType.ADJUST, userId: req.user.sub, ref: { tipo: 'AJUSTE' } });
+  }
+  
+    @Post('transfer')
+  transfer(@Body() dto: TransferStockDto, @Req() req: any) {
+    return this.stock.transfer({
+      itemId: dto.itemId,
+      fromLocationId: dto.fromLocationId,
+      toLocationId: dto.toLocationId,
+      cantidad: dto.cantidad,
+      userId: req.user.sub,
+      comentario: dto.comentario,
+    });
   }
 }
