@@ -130,6 +130,7 @@ export class StockService {
 
     return query
       .leftJoinAndSelect('inv.item', 'item')
+      .andWhere('item.activo = :activo', { activo: true })
       .leftJoinAndSelect('inv.location', 'location')
       .orderBy('inv.updated_at', 'DESC')
       .getMany();

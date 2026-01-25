@@ -19,7 +19,7 @@ export class ItemsService {
   }
 
   async findAll(filters?: { search?: string; categoria?: string; status?: string }) {
-    const where: any = {};
+    const where: any = { activo: true };
 
     // Filtro por búsqueda en descripción
     if (filters?.search) {
@@ -58,7 +58,8 @@ export class ItemsService {
 
   async remove(id: string) {
     const item = await this.findOne(id);
-    return this.itemRepo.remove(item);
+    item.activo = false;
+    return this.itemRepo.save(item);
   }
 
   // Método útil para buscar por descripción (para autocomplete)
