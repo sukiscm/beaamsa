@@ -122,18 +122,28 @@ export class MaterialRequestsService {
 
       console.log('✅ Stock verificado, procediendo con la aprobación...');
 
-      // Actualizar cantidades aprobadas
+      // Actualizar cantidades aprobadas y determinar si es entrega total o parcial
+      let isPartial = false;
+
       for (const itemDto of dto.items) {
         const reqItem = req.items.find((i) => i.item.id === itemDto.itemId);
         if (!reqItem) continue;
 
-        reqItem.quantityApproved = itemDto.quantityApproved.toString();
-        reqItem.quantityDelivered = itemDto.quantityApproved.toString();
+        const requested = parseFloat(reqItem.quantityRequested || '0');
+        const approved = itemDto.quantityApproved;
+
+        // Si se aprobó menos de lo solicitado, es entrega parcial
+        if (approved < requested) {
+          isPartial = true;
+        }
+
+        reqItem.quantityApproved = approved.toString();
+        reqItem.quantityDelivered = approved.toString();
         await manager.save(reqItem);
       }
 
-      // Actualizar estado
-      req.status = MaterialRequestStatus.APPROVED;
+      // Actualizar estado: DELIVERED si se entregó todo, PARTIAL si no
+      req.status = isPartial ? MaterialRequestStatus.PARTIAL : MaterialRequestStatus.DELIVERED;
       req.approvedBy = { id: userId } as any;
       req.deliveredBy = { id: userId } as any;
       req.approvedAt = new Date();

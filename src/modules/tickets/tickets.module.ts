@@ -5,9 +5,16 @@ import { TicketsService } from './tickets.service';
 import { TicketsController } from './tickets.controller';
 import { Ticket } from './entities/ticket.entity';
 import { UsersModule } from '../users/users.module';
+import { MaterialRequestsModule } from '../material-requests/material-requests.module';
+import { StockModule } from '../inventory/stock/stock.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Ticket]), UsersModule],
+  imports: [
+    TypeOrmModule.forFeature([Ticket]),
+    UsersModule,
+    MaterialRequestsModule,
+    StockModule,
+  ],
   controllers: [TicketsController],
   providers: [TicketsService],
   exports: [TypeOrmModule],

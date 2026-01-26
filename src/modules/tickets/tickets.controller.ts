@@ -2,6 +2,7 @@
 import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { TicketsService } from './tickets.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
+import { CloseTicketDto } from './dto/close-ticket.dto';
 import { AuthGuard } from '@nestjs/passport';
 
 @Controller('/tickets')
@@ -37,4 +38,8 @@ export class TicketsController {
     return this.tickets.findOne(id);
   }
 
+  @Post(':id/close')
+  close(@Param('id') id: string, @Body() dto: CloseTicketDto, @Req() req: any) {
+    return this.tickets.close(id, dto, req.user.sub);
+  }
 }
