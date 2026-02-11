@@ -132,7 +132,7 @@ export class StockService {
       .leftJoinAndSelect('inv.item', 'item')
       .andWhere('item.activo = :activo', { activo: true })
       .leftJoinAndSelect('inv.location', 'location')
-      .orderBy('inv.updated_at', 'DESC')
+      .orderBy('inv.updatedAt', 'DESC')
       .getMany();
   }
 
@@ -143,7 +143,7 @@ export class StockService {
       .leftJoinAndSelect('mov.item', 'item')
       .leftJoinAndSelect('mov.location', 'location')
       .leftJoinAndSelect('mov.user', 'user')
-      .orderBy('mov.created_at', 'DESC')
+      .orderBy('mov.createdAt', 'DESC')
       .take(100)
       .getMany();
   }
