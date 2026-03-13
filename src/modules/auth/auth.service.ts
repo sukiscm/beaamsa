@@ -23,7 +23,7 @@ export class AuthService {
 
   async login(email: string, pass: string) {
     const user = await this.validate(email, pass);
-    const payload = { sub: user.id, email: user.email };
+    const payload = { sub: user.id, email: user.email, role: user.role, name: user.name };
 
     const access_token = await this.jwt.signAsync(payload); // usa secret/ttl del registerAsync
     const refresh_token = await this.jwt.signAsync(
